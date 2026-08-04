@@ -22,6 +22,7 @@ services:
       CA_ENCRYPTION_KEY: Ka7prX3ZqESxa79C3kqWOI1cV979B-x7A7NT5-nU2p0=
       ADMIN_API_KEY: l35BOxDU0WL0ea6C2qgRWzUD2DNcztaj7DLFiuzG4rQ=
       ADMIN_WEB_PASSWORD: admin
+      ADMIN_WEB_READONLY_PASSWORD: readonly
       ADMIN_WEB_SESSION_SECRET: dev-session-secret-change-in-production
       WEB_APP_TITLE: 'HPS ACME Server'
       WEB_ENABLED: 'True'

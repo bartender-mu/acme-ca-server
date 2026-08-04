@@ -103,6 +103,7 @@ class AdminSettings(BaseSettings):
 
 class AdminWebSettings(BaseSettings):
     password: SecretStr | None = None
+    readonly_password: SecretStr | None = None
     session_secret: SecretStr | None = None
     session_max_age: timedelta = timedelta(hours=24)
 

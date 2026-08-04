@@ -25,14 +25,17 @@ import db  # pylint: disable=wrong-import-order,ungrouped-imports
 
 
 async def seed_web_users():
-    if not settings.admin_web.password:
-        return
-    password = settings.admin_web.password.get_secret_value()
-    user_id = 'admin'
-    username = 'admin'
-    password_hash = auth_service.hash_password(password)
-    await auth_service.create_user(user_id, username, password_hash, 'admin')
-    logger.info('web admin user created (login: admin)')
+    if settings.admin_web.password:
+        password = settings.admin_web.password.get_secret_value()
+        password_hash = auth_service.hash_password(password)
+        await auth_service.create_user('admin', 'admin', password_hash, 'admin')
+        logger.info('web admin user created (login: admin)')
+
+    if settings.admin_web.readonly_password:
+        password = settings.admin_web.readonly_password.get_secret_value()
+        password_hash = auth_service.hash_password(password)
+        await auth_service.create_user('readonly', 'readonly', password_hash, 'readonly')
+        logger.info('web readonly user created (login: readonly)')
 
 
 async def _handle_acme_exception(_request: Request, exc: Exception) -> JSONResponse:
