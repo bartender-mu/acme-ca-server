@@ -63,6 +63,20 @@
     <button type="submit">filter</button>
 </form>
 
+<form id="admin-form" action="">
+    <fieldset>
+        <legend>
+            <h3>admin actions</h3>
+        </legend>
+        <label>
+            Admin API key
+            <input type="password" id="admin-api-key" placeholder="paste X-Admin-API-Key" autocomplete="off">
+        </label>
+        <button type="button" id="admin-save-key">save key</button>
+        <span id="admin-key-status"></span>
+    </fieldset>
+</form>
+
 <table>
     <thead>
         <tr>
@@ -73,6 +87,7 @@
             <th>Age (Days)</th>
             <th>Revoked At</th>
             <th>Domains</th>
+            <th>Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -105,10 +120,20 @@
                     {% endfor %}
                 </ul>
             </td>
+            <td>
+                {% if cert.has_private_key %}
+                <button type="button" class="admin-download" data-serial="{{cert.serial_number}}">download</button>
+                {% endif %}
+                {% if not cert.revoked_at %}
+                <button type="button" class="admin-revoke" data-serial="{{cert.serial_number}}">revoke</button>
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 
 <p>Output is limited to the first 1000 results.</p>
+
+<script src="/admin.js"></script>
 {% endblock %}

@@ -1,12 +1,13 @@
 from pathlib import Path
 from typing import Literal
 
-import db
 from config import settings
 from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader
 from pydantic import constr
+
+import db
 
 template_engine = Environment(loader=FileSystemLoader(Path(__file__).parent / 'templates'), enable_async=True, autoescape=True)
 
@@ -41,11 +42,12 @@ if settings.web.enable_public_log:
                             (not_valid_after > now() and revoked_at is null) as is_valid,
                             (not_valid_after - not_valid_before) as lifetime,
                             (now() - not_valid_before) as age,
+                            (cert.private_key_pem is not null) as has_private_key,
                             array_agg(domain order by domain) as domains
                         from certificates cert
                         join authorizations authz on authz.order_id = cert.order_id
                         where ($1::text = '' or authz.domain ilike '%' || $1::text || '%')
-                        group by serial_number
+                        group by serial_number, cert.private_key_pem
                     )
                     select * from data
                     where ($2 = 'all' or ($2 = 'valid' and is_valid) or ($2 = 'invalid' and not is_valid))
@@ -64,7 +66,11 @@ if settings.web.enable_public_log:
             pem_chain = await sql.value("""select chain_pem from certificates where serial_number = $1""", serial_number)
         if not pem_chain:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='unknown certificate')
-        return Response(content=pem_chain, media_type='application/pem-certificate-chain')
+        return Response(
+            content=pem_chain,
+            media_type='application/pem-certificate-chain',
+            headers={'Content-Disposition': f'attachment; filename="{serial_number}.crt"'},
+        )
 
     @api.get('/domains', response_class=HTMLResponse)
     async def domain_log(domainfilter: str = '', domainstatus: Literal['all', 'valid', 'invalid'] = 'all'):
