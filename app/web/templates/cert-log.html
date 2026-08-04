@@ -123,10 +123,10 @@
                 </ul>
             </td>
             <td>
-                {% if user_is_admin %}
-                {% if cert.has_private_key %}
-                <button type="button" class="admin-download" data-serial="{{cert.serial_number}}">download</button>
+                {% if user_username %}
+                <a href="/certificates/{{cert.serial_number}}/package" class="button">download</a>
                 {% endif %}
+                {% if user_is_admin %}
                 {% if not cert.revoked_at %}
                 <button type="button" class="admin-revoke" data-serial="{{cert.serial_number}}">revoke</button>
                 {% endif %}

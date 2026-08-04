@@ -1,3 +1,5 @@
+import io
+import zipfile
 from pathlib import Path
 from typing import Literal
 
@@ -96,6 +98,43 @@ if settings.web.enable_public_log:
             content=pem_chain,
             media_type='application/pem-certificate-chain',
             headers={'Content-Disposition': f'attachment; filename="{serial_number}.crt"'},
+        )
+
+    @api.get('/certificates/{serial_number}/package')
+    async def download_package(serial_number: constr(pattern='^[0-9A-F]+$'), request: Request):  # type: ignore[valid-type]
+        user = getattr(request.state, 'user', None)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='not authenticated')
+        async with db.transaction(readonly=True) as sql:
+            record = await sql.record(
+                """
+                select cert.chain_pem, cert.private_key_pem,
+                       (select array_agg(domain order by domain) from authorizations where order_id = cert.order_id) as domains
+                from certificates cert
+                where cert.serial_number = $1
+                """,
+                serial_number,
+            )
+        if not record:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='certificate not found')
+        if not record['private_key_pem']:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='private key not found')
+
+        cert_pem = record['chain_pem'].encode()
+        key_pem = record['private_key_pem'].encode()
+        domain = record['domains'][0] if record['domains'] else serial_number
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.writestr(f'{domain}.crt', cert_pem)
+            zip_file.writestr(f'{domain}.key', key_pem)
+            zip_file.writestr(f'{domain}.chain.crt', cert_pem)
+        zip_buffer.seek(0)
+
+        return Response(
+            content=zip_buffer.getvalue(),
+            media_type='application/zip',
+            headers={'Content-Disposition': f'attachment; filename="{serial_number}.zip"'},
         )
 
     @api.get('/domains', response_class=HTMLResponse)
