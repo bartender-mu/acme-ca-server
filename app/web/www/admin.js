@@ -91,6 +91,40 @@ async function revokeCertificate(event) {
     }
 }
 
+async function deleteCertificate(event) {
+    const button = event.target;
+    const serial = button.dataset.serial;
+    if (!serial) {
+        return;
+    }
+    const key = getApiKey();
+    if (!key) {
+        updateStatus('please save the admin API key first', true);
+        return;
+    }
+    if (!window.confirm(`Permanently delete certificate ${serial}? This cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/admin/delete', {
+            method: 'POST',
+            headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ serial_number: serial }),
+        });
+        if (!response.ok) {
+            const body = await response.text();
+            throw new Error(`${response.status}: ${body}`);
+        }
+        const row = button.closest('tr');
+        if (row) {
+            row.remove();
+        }
+    } catch (error) {
+        updateStatus(`delete failed: ${error.message}`, true);
+    }
+}
+
 function initAdminControls() {
     const keyInput = document.getElementById('admin-api-key');
     const saveButton = document.getElementById('admin-save-key');
@@ -108,6 +142,9 @@ function initAdminControls() {
     });
     document.querySelectorAll('.admin-revoke').forEach((button) => {
         button.addEventListener('click', revokeCertificate);
+    });
+    document.querySelectorAll('.admin-delete').forEach((button) => {
+        button.addEventListener('click', deleteCertificate);
     });
 }
 

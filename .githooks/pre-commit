@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run the same lint/format/type checks as CI (lint.yml).
+set -e
+
+# Only run when app source or Python config is staged.
+if ! git diff --cached --name-only | grep -qE '^(app/.*|pyproject\.toml|project\.toml|requirements\.txt)$'; then
+    echo 'No app source files staged; skipping lint hook.'
+    exit 0
+fi
+
+missing_tools=()
+for tool in python flake8 pylint ruff mypy; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        missing_tools+=("$tool")
+    fi
+done
+
+if [ ${#missing_tools[@]} -ne 0 ]; then
+    echo "Missing lint tools: ${missing_tools[*]}" >&2
+    echo 'Install them with:' >&2
+    echo '  pip install flake8 flake8-bandit flake8-bugbear flake8-builtins flake8-comprehensions flake8-deprecated flake8-isort flake8-print flake8-quotes flake8-todo pylint ruff mypy' >&2
+    echo 'Or commit with --no-verify to skip this hook.' >&2
+    exit 1
+fi
+
+echo 'Running flake8...'
+python -m flake8 --max-line-length 179 --ignore=F722,B008,I001,I004,I005 app
+
+echo 'Running pylint...'
+pylint app
+
+echo 'Running ruff check...'
+ruff check app
+
+echo 'Running ruff format check...'
+ruff format --check app
+
+echo 'Running mypy...'
+mypy app
+
+echo 'Pre-commit lint checks passed.'

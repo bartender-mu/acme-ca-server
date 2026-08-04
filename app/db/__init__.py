@@ -56,7 +56,7 @@ class transaction:  # pylint: disable=invalid-name
         """fetch first value from first response row for query"""
         return await self.conn.fetchval(*args)
 
-    async def exec(self, *args):  # noqa: A003 (allow shadowing builtin "type")
+    async def exec(self, *args):
         """execute command"""
         return await self.conn.execute(*args)
 

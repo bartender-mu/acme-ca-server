@@ -135,6 +135,57 @@ For instance, `DB_DSN` can be provided either as an env var or as a file at `/ru
 | WEB_ENABLE_PUBLIC_LOG        | `False` | whether to show a transparency log of all certificates generated via ACME  |
 | WEB_APP_TITLE        | `ACME CA Server` | title shown in web and mails  |
 | WEB_APP_DESCRIPTION        | `Self-hosted ACME CA Server` | description shown in web and mails  |
+| ACME_HTTP01_ENABLED        | `True`       | whether the `http-01` ACME challenge is offered  |
+| ACME_DNS01_ENABLED        | `False`       | whether the `dns-01` ACME challenge is offered  |
+| ACME_DNS01_TTL        | `60`       | TTL (seconds) for `_acme-challenge.<domain>` TXT records created by the server  |
+| ACME_DNS01_NAMESERVERS        | system default       | comma-separated list of DNS resolvers used to validate TXT records (e.g. `8.8.8.8,1.1.1.1`)  |
+| ACME_DNS01_MAX_RETRIES        | `5`       | how many times to retry DNS TXT validation  |
+| ACME_DNS01_RETRY_DELAY_SECONDS        | `5`       | seconds to wait between DNS validation retries  |
+| ADMIN_API_KEY        | `None`       | enables the `/admin/issue`, `/admin/revoke`, and `/admin/delete` endpoints when set  |
+| ADMIN_WEB_PASSWORD        | `None`       | sets the password for the web UI admin account (login: `admin`). When set, enables web UI authentication.  |
+| ADMIN_WEB_SESSION_SECRET        | `None`       | secret key for signing web session cookies. Required when `ADMIN_WEB_PASSWORD` is set.  |
+
+### Database certificates
+
+The server can generate a private key + certificate directly via the admin endpoint. This is useful for services that cannot complete an ACME challenge themselves, such as databases.
+
+```shell
+curl -X POST http://localhost:8080/admin/issue \
+  -H 'X-Admin-API-Key: your-admin-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"domains": ["db.example.org"], "key_type": "rsa", "key_size": 4096}'
+```
+
+Response fields: `private_key`, `certificate`, `chain`, `serial_number`, `not_before`, `not_after`.
+
+Revoke an admin-issued certificate:
+
+```shell
+curl -X POST http://localhost:8080/admin/revoke \
+  -H 'X-Admin-API-Key: your-admin-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"serial_number": "..."}'
+```
+
+Permanently delete a certificate and all its associated database rows:
+
+```shell
+curl -X POST http://localhost:8080/admin/delete \
+  -H 'X-Admin-API-Key: your-admin-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"serial_number": "..."}'
+```
+
+### DNS-01 challenge
+
+Enable DNS-01 to issue certificates for services that do not expose HTTP (e.g. databases):
+
+```yaml
+environment:
+  ACME_DNS01_ENABLED: 'True'
+```
+
+The server must be able to create and remove `_acme-challenge.<domain>` TXT records. Replace the default hook at `/app/acme/challenge/dns_provider.py` with logic for your DNS backend (same pattern as the custom CA hook at `/app/ca/service.py`).
 
 ### Customize templates
 

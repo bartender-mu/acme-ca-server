@@ -15,7 +15,7 @@ from . import service
 api = APIRouter(prefix='/admin', tags=['admin'])
 
 
-class AdminApiKey:
+class AdminApiKey:  # pylint: disable=R0903
     def __call__(self, api_key: Annotated[str | None, Header(alias='X-Admin-API-Key')] = None):
         expected = settings.admin.api_key.get_secret_value() if settings.admin.api_key else ''
         if not api_key or not hmac.compare_digest(api_key, expected):
@@ -119,3 +119,12 @@ async def revoke(
 ):
     await service.revoke_certificate(request.serial_number)
     return {'revoked': True}
+
+
+@api.post('/delete')
+async def delete(
+    request: RevokeRequest,
+    _: Annotated[None, Depends(require_admin_key)],
+):
+    await service.delete_certificate(request.serial_number)
+    return {'deleted': True}

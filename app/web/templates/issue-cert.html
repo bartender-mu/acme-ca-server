@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Issue Certificate{% endblock %}
+{% block head %}
+{{ super() }}
+<style type="text/css">
+    form {
+        border: 1px solid #ccc;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+
+    fieldset {
+        margin-bottom: 1rem;
+    }
+
+    .domain-row {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        margin-bottom: .5rem;
+    }
+
+    .domain-row input {
+        margin-bottom: 0;
+        flex: 1;
+    }
+
+    .key-size-options {
+        margin-bottom: 0;
+    }
+
+    #result {
+        display: none;
+    }
+
+    #result pre {
+        overflow-x: auto;
+        font-size: 1.1rem;
+        line-height: 1.4;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<h2>Issue Certificate</h2>
+
+<form id="issue-form" action="">
+    <fieldset>
+        <legend>
+            <h3>admin API key</h3>
+        </legend>
+        <label>
+            Admin API key
+            <input type="password" id="admin-api-key" placeholder="paste X-Admin-API-Key" autocomplete="off">
+        </label>
+        <button type="button" id="admin-save-key">save key</button>
+        <span id="admin-key-status"></span>
+    </fieldset>
+
+    <fieldset>
+        <legend>
+            <h3>domains</h3>
+        </legend>
+        <div id="domain-list">
+            <div class="domain-row">
+                <input type="text" name="domains" placeholder="example.org" required>
+                <button type="button" class="remove-domain">remove</button>
+            </div>
+        </div>
+        <button type="button" id="add-domain">add domain</button>
+    </fieldset>
+
+    <fieldset>
+        <legend>
+            <h3>key type</h3>
+        </legend>
+        <div class="row">
+            <label>
+                <input type="radio" name="key-type" value="rsa" checked> RSA
+            </label>
+            <label>
+                <input type="radio" name="key-type" value="ec"> EC
+            </label>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>
+            <h3>key size</h3>
+        </legend>
+        <label>
+            Key size
+            <select id="key-size" class="key-size-options">
+                <option value="2048">2048</option>
+                <option value="4096">4096</option>
+            </select>
+        </label>
+    </fieldset>
+
+    <button type="submit" id="issue-button">issue certificate</button>
+    <span id="issue-status"></span>
+</form>
+
+<div id="result">
+    <h3>Certificate issued</h3>
+    <p>
+        Serial Number: <code id="result-serial"></code><br>
+        Not Before: <span id="result-not-before"></span><br>
+        Not After: <span id="result-not-after"></span>
+    </p>
+    <p>
+        <button type="button" id="result-download">download .zip</button>
+    </p>
+    <h4>Private Key</h4>
+    <pre id="result-private-key"></pre>
+    <h4>Certificate</h4>
+    <pre id="result-certificate"></pre>
+    <h4>Chain</h4>
+    <pre id="result-chain"></pre>
+</div>
+
+<script src="/admin.js?v={{asset_version}}"></script>
+<script src="/issue.js?v={{asset_version}}"></script>
+{% endblock %}

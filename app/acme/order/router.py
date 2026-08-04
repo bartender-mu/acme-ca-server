@@ -1,9 +1,8 @@
 import asyncio
 import secrets
 from datetime import datetime
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 
-import db
 from ca import service as ca_service
 from config import settings
 from fastapi import APIRouter, Depends, Response, status
@@ -11,20 +10,22 @@ from jwcrypto.common import base64url_decode
 from logger import logger
 from pydantic import BaseModel, conlist, constr
 
+import db
+
 from ..certificate.service import SerialNumberConverter, check_csr
 from ..exceptions import ACMEException
 from ..middleware import RequestData, SignedRequest
 
 
 class NewOrderDomain(BaseModel):
-    type: Literal['dns']  # noqa: A003 (allow shadowing builtin "type")
+    type: Literal['dns']
     value: constr(pattern=f'^{settings.acme.target_domain_regex.pattern.strip().removeprefix("^").removesuffix("$")}$')  # type: ignore[valid-type]
 
 
 class NewOrderPayload(BaseModel):
     identifiers: conlist(NewOrderDomain, min_length=1)  # type: ignore[valid-type]
-    notBefore: Optional[datetime] = None
-    notAfter: Optional[datetime] = None
+    notBefore: datetime | None = None
+    notAfter: datetime | None = None
 
 
 class FinalizeOrderPayload(BaseModel):
@@ -38,10 +39,10 @@ def order_response(
     domains: list[str],
     authz_ids: list[str],
     order_id: str,
-    error: Optional[ACMEException] = None,
-    not_valid_before: Optional[datetime] = None,
-    not_valid_after: Optional[datetime] = None,
-    cert_serial_number: Optional[str] = None,
+    error: ACMEException | None = None,
+    not_valid_before: datetime | None = None,
+    not_valid_after: datetime | None = None,
+    cert_serial_number: str | None = None,
 ):
     return {
         'status': status,
@@ -68,16 +69,33 @@ async def submit_order(response: Response, data: Annotated[RequestData[NewOrderP
             new_nonce=data.new_nonce,
         )
 
+    if not settings.acme.http01_enabled and not settings.acme.dns01_enabled:
+        raise ACMEException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            exctype='serverInternal',
+            detail='no ACME challenge type is enabled',
+            new_nonce=data.new_nonce,
+        )
+
     domains: list[str] = list({identifier.value for identifier in data.payload.identifiers})  # deduplicate domains
 
     def generate_tokens_sync(domains):
         order_id = secrets.token_urlsafe(16)
         authz_ids = {domain: secrets.token_urlsafe(16) for domain in domains}
-        chal_ids = {domain: secrets.token_urlsafe(16) for domain in domains}
-        chal_tkns = {domain: secrets.token_urlsafe(32) for domain in domains}
-        return order_id, authz_ids, chal_ids, chal_tkns
+        challenge_types = []
+        if settings.acme.http01_enabled:
+            challenge_types.append('http-01')
+        if settings.acme.dns01_enabled:
+            challenge_types.append('dns-01')
+        challenges = []
+        for domain in domains:
+            for ch_type in challenge_types:
+                chal_id = secrets.token_urlsafe(16)
+                token = secrets.token_urlsafe(32)
+                challenges.append((chal_id, authz_ids[domain], token, ch_type))
+        return order_id, authz_ids, challenges
 
-    order_id, authz_ids, chal_ids, chal_tkns = await asyncio.to_thread(generate_tokens_sync, domains)
+    order_id, authz_ids, challenges = await asyncio.to_thread(generate_tokens_sync, domains)
 
     async with db.transaction() as sql:
         order_status, expires_at = await sql.record(
@@ -90,8 +108,8 @@ async def submit_order(response: Response, data: Annotated[RequestData[NewOrderP
             *[(authz_ids[domain], order_id, domain) for domain in domains],
         )
         await sql.execmany(
-            """insert into challenges (id, authz_id, token) values ($1, $2, $3)""",
-            *[(chal_ids[domain], authz_ids[domain], chal_tkns[domain]) for domain in domains],
+            """insert into challenges (id, authz_id, token, type) values ($1, $2, $3, $4)""",
+            *challenges,
         )
 
     response.headers['Location'] = f'{settings.external_url}acme/orders/{order_id}'

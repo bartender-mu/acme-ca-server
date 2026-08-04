@@ -63,6 +63,7 @@
     <button type="submit">filter</button>
 </form>
 
+{% if user_is_admin %}
 <form id="admin-form" action="">
     <fieldset>
         <legend>
@@ -76,6 +77,7 @@
         <span id="admin-key-status"></span>
     </fieldset>
 </form>
+{% endif %}
 
 <table>
     <thead>
@@ -121,11 +123,14 @@
                 </ul>
             </td>
             <td>
+                {% if user_is_admin %}
                 {% if cert.has_private_key %}
                 <button type="button" class="admin-download" data-serial="{{cert.serial_number}}">download</button>
                 {% endif %}
                 {% if not cert.revoked_at %}
                 <button type="button" class="admin-revoke" data-serial="{{cert.serial_number}}">revoke</button>
+                {% endif %}
+                <button type="button" class="admin-delete" data-serial="{{cert.serial_number}}">delete</button>
                 {% endif %}
             </td>
         </tr>
@@ -135,5 +140,7 @@
 
 <p>Output is limited to the first 1000 results.</p>
 
-<script src="/admin.js"></script>
+{% if user_is_admin %}
+<script src="/admin.js?v={{asset_version}}"></script>
+{% endif %}
 {% endblock %}

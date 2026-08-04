@@ -1,6 +1,5 @@
 import asyncio
 
-import db
 from acme.certificate.service import SerialNumberConverter
 from config import settings
 from cryptography import x509
@@ -8,6 +7,8 @@ from cryptography.hazmat.primitives import serialization
 from fastapi import APIRouter, HTTPException, Response, status
 from logger import logger
 from pydantic import constr
+
+import db
 
 router = APIRouter(prefix='/ca', tags=['ca'])
 

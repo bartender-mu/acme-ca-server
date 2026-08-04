@@ -135,6 +135,33 @@ async def load_certificate_with_key(serial_number: str):
     }
 
 
+async def delete_certificate(serial_number: str):
+    async with db.transaction(readonly=True) as sql:
+        record = await sql.record(
+            """select order_id, (revoked_at is not null) as is_revoked from certificates where serial_number = $1""",
+            serial_number,
+        )
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='certificate not found')
+
+    order_id = record['order_id']
+    is_revoked = record['is_revoked']
+
+    async with db.transaction() as sql:
+        await sql.exec(
+            """delete from challenges where authz_id in (select id from authorizations where order_id = $1)""",
+            order_id,
+        )
+        await sql.exec("""delete from authorizations where order_id = $1""", order_id)
+        await sql.exec("""delete from certificates where serial_number = $1""", serial_number)
+        await sql.exec("""delete from orders where id = $1""", order_id)
+
+    if is_revoked:
+        async with db.transaction(readonly=True) as sql:
+            revocations = {(row['serial_number'], row['revoked_at']) async for row in sql("""select serial_number, revoked_at from certificates where revoked_at is not null""")}
+        await ca_service.revoke_cert(serial_number=serial_number, revocations=revocations)
+
+
 async def revoke_certificate(serial_number: str):
     async with db.transaction(readonly=True) as sql:
         exists = await sql.value("""select 1 from certificates where serial_number = $1""", serial_number)

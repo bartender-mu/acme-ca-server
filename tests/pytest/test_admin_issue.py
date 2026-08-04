@@ -213,6 +213,68 @@ def test_admin_revoke_acme_certificate(signed_request, directory, testclient, db
     assert record['revoked_at'] is not None
 
 
+def test_admin_delete_certificate(testclient, db):
+    data = _issue_admin_certificate(testclient, domain='delete.example.org')
+    serial_number = data['serial_number']
+    order_id = db.fetch_row('select order_id from certificates where serial_number = $1', serial_number)['order_id']
+
+    response = testclient.post(
+        '/admin/delete',
+        headers={'X-Admin-API-Key': 'test-admin-key'},
+        json={'serial_number': serial_number},
+    )
+    assert response.status_code == 200
+
+    assert db.fetch_row('select 1 from certificates where serial_number = $1', serial_number) is None
+    assert db.fetch_row('select 1 from orders where id = $1', order_id) is None
+    assert db.fetch_row('select 1 from authorizations where order_id = $1', order_id) is None
+    assert db.fetch_row('select 1 from challenges where authz_id in (select id from authorizations where order_id = $1)', order_id) is None
+
+
+def test_admin_delete_revoked_certificate(testclient, db):
+    data = _issue_admin_certificate(testclient, domain='deleterevoked.example.org')
+    serial_number = data['serial_number']
+
+    response = testclient.post(
+        '/admin/revoke',
+        headers={'X-Admin-API-Key': 'test-admin-key'},
+        json={'serial_number': serial_number},
+    )
+    assert response.status_code == 200
+
+    response = testclient.post(
+        '/admin/delete',
+        headers={'X-Admin-API-Key': 'test-admin-key'},
+        json={'serial_number': serial_number},
+    )
+    assert response.status_code == 200
+    assert db.fetch_row('select 1 from certificates where serial_number = $1', serial_number) is None
+
+
+def test_admin_delete_requires_api_key(testclient):
+    data = _issue_admin_certificate(testclient)
+    serial_number = data['serial_number']
+
+    response = testclient.post('/admin/delete', json={'serial_number': serial_number})
+    assert response.status_code == 403
+
+    response = testclient.post(
+        '/admin/delete',
+        headers={'X-Admin-API-Key': 'wrong-key'},
+        json={'serial_number': serial_number},
+    )
+    assert response.status_code == 403
+
+
+def test_admin_delete_not_found(testclient):
+    response = testclient.post(
+        '/admin/delete',
+        headers={'X-Admin-API-Key': 'test-admin-key'},
+        json={'serial_number': 'ABCDEF'},
+    )
+    assert response.status_code == 404
+
+
 def _assert_issue_response(data, expected_domain):
     assert 'private_key' in data
     assert 'certificate' in data

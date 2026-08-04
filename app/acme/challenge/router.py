@@ -1,9 +1,10 @@
 from typing import Annotated, Literal
 
-import db
 from config import settings
 from fastapi import APIRouter, Depends, Response, status
 from logger import logger
+
+import db
 
 from ..exceptions import ACMEException
 from ..middleware import RequestData, SignedRequest
@@ -18,7 +19,7 @@ async def verify_challenge(response: Response, chal_id: str, data: Annotated[Req
     async with db.transaction() as sql:
         record = await sql.record(
             """
-            select chal.authz_id, chal.error, chal.status, authz.status, authz.domain, chal.validated_at, chal.token, ord.id, ord.status from challenges chal
+            select chal.authz_id, chal.error, chal.status, chal.type, authz.status, authz.domain, chal.validated_at, chal.token, ord.id, ord.status from challenges chal
             join authorizations authz on authz.id = chal.authz_id
             join orders ord on authz.order_id = ord.id
             where chal.id = $1 and ord.account_id = $2 and ord.expires_at > now()
@@ -33,7 +34,7 @@ async def verify_challenge(response: Response, chal_id: str, data: Annotated[Req
                 detail='specified challenge not available for current account',
                 new_nonce=data.new_nonce,
             )
-        authz_id, chal_err, chal_status, authz_status, domain, chal_validated_at, token, order_id, order_status = record
+        authz_id, chal_err, chal_status, chal_type, authz_status, domain, chal_validated_at, token, order_id, order_status = record
         if order_status == 'invalid':
             await sql.exec("""update authorizations set status = 'invalid' where id = $1""", authz_id)
             await sql.value(
@@ -68,7 +69,17 @@ async def verify_challenge(response: Response, chal_id: str, data: Annotated[Req
     if must_solve_challenge:
         err: Literal[False] | ACMEException
         try:
-            await service.check_challenge_is_fulfilled(domain=domain, token=token, jwk=data.key, new_nonce=data.new_nonce)
+            if chal_type == 'http-01':
+                await service.check_challenge_is_fulfilled(domain=domain, token=token, jwk=data.key, new_nonce=data.new_nonce)
+            elif chal_type == 'dns-01':
+                await service.check_dns_challenge_is_fulfilled(domain=domain, token=token, jwk=data.key, new_nonce=data.new_nonce)
+            else:
+                raise ACMEException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    exctype='serverInternal',
+                    detail=f'unsupported challenge type: {chal_type}',
+                    new_nonce=data.new_nonce,
+                )
             err = False
         except ACMEException as e:
             err = e
@@ -111,7 +122,7 @@ async def verify_challenge(response: Response, chal_id: str, data: Annotated[Req
                 )
 
     return {
-        'type': 'http-01',
+        'type': chal_type,
         'url': f'{settings.external_url}acme/challenges/{chal_id}',
         'status': chal_status,
         'validated': chal_validated_at,

@@ -11,11 +11,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture
 def testclient() -> Generator[TestClient, None, None]:
     os.environ['ca_encryption_key'] = 'M8L6RSYPiHHr6GogXmkQIs7gVia_K5fDDJiNK7zUt0k='
     os.environ['external_url'] = 'http://localhost:8000/'
     os.environ['acme_mail_required'] = 'False'
+    os.environ['acme_dns01_enabled'] = 'False'
+    os.environ['admin_api_key'] = 'test-admin-key'
+    os.environ['admin_web_password'] = 'testadmin'
+    os.environ['admin_web_session_secret'] = 'test-session-secret-for-tests'
     os.environ['WEB_ENABLE_PUBLIC_LOG'] = 'True'
 
     ca_dir = Path(__file__).parent / 'import-ca'
@@ -38,7 +42,20 @@ def testclient() -> Generator[TestClient, None, None]:
         yield tc
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture
+def web_auth(testclient: TestClient) -> TestClient:
+    response = testclient.post(
+        '/auth/login',
+        data={'username': 'admin', 'password': 'testadmin'},
+        follow_redirects=False,
+    )
+    if response.status_code != 303:
+        print(f"LOGIN FAILED: {response.status_code}, content: {response.content[:200]}")
+    assert response.status_code == 303, f"Login failed: {response.status_code} - {response.content[:500]}"
+    return testclient
+
+
+@pytest.fixture
 def directory(testclient: TestClient) -> dict[str, str]:
     return testclient.get('/acme/directory').json()
 

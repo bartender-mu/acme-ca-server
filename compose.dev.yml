@@ -20,8 +20,14 @@ services:
       EXTERNAL_URL: http://localhost:8080
       DB_DSN: postgresql://postgres:secret@db/postgres
       CA_ENCRYPTION_KEY: Ka7prX3ZqESxa79C3kqWOI1cV979B-x7A7NT5-nU2p0=
+      ADMIN_API_KEY: l35BOxDU0WL0ea6C2qgRWzUD2DNcztaj7DLFiuzG4rQ=
+      ADMIN_WEB_PASSWORD: admin
+      ADMIN_WEB_SESSION_SECRET: dev-session-secret-change-in-production
+      WEB_APP_TITLE: 'HPS ACME Server'
+      WEB_ENABLED: 'True'
       WEB_ENABLE_PUBLIC_LOG: 'True'
       ACME_MAIL_REQUIRED: 'False'
+      ACME_DNS01_ENABLED: 'False'
     depends_on:
       db:
         condition: service_started

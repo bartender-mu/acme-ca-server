@@ -7,6 +7,10 @@
 {% endblock %}
 {% block content %}
 
+{% if not user_username %}
+<p><a href="/auth/login">Login</a></p>
+{% endif %}
+
 <ul>
     <li>
         <a href="certificates">Certificates</a>
@@ -14,6 +18,11 @@
     <li>
         <a href="domains">Domains</a>
     </li>
+    {% if user_is_admin and admin_enabled %}
+    <li>
+        <a href="issue">Issue Certificate</a>
+    </li>
+    {% endif %}
     <li>
         <a href="endpoints">Endpoints</a>
     </li>

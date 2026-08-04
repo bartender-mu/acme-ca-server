@@ -4,19 +4,57 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import acme
+import auth
+import auth.service as auth_service
 import ca
-import db
-import db.migrations
-import web
+import db.migrations  # pylint: disable=wrong-import-order
+import web  # pylint: disable=wrong-import-order
 from acme.exceptions import ACMEException
 from config import settings
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from logger import logger  # pylint: disable=wrong-import-order,ungrouped-imports
 from pydantic import ValidationError
+
+import db  # pylint: disable=wrong-import-order,ungrouped-imports
+
+
+async def seed_web_users():
+    if not settings.admin_web.password:
+        return
+    password = settings.admin_web.password.get_secret_value()
+    user_id = 'admin'
+    username = 'admin'
+    password_hash = auth_service.hash_password(password)
+    await auth_service.create_user(user_id, username, password_hash, 'admin')
+    logger.info('web admin user created (login: admin)')
+
+
+async def _handle_acme_exception(_request: Request, exc: Exception) -> JSONResponse:
+    if isinstance(exc, ACMEException):
+        return await exc.as_response()
+    if isinstance(exc, ValidationError):
+        return await ACMEException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            exctype='malformed',
+            detail=exc.json(),
+        ).as_response()
+    if isinstance(exc, HTTPException):
+        return await ACMEException(
+            status_code=exc.status_code,
+            exctype='serverInternal',
+            detail=str(exc.detail),
+        ).as_response()
+    return await ACMEException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        exctype='serverInternal',
+        detail=str(exc),
+    ).as_response()
 
 
 @asynccontextmanager
@@ -24,6 +62,11 @@ async def lifespan(_: FastAPI):
     await db.connect()
     await db.migrations.run()
     await ca.init()
+    if settings.admin.api_key:
+        import admin as admin_module  # pylint: disable=import-outside-toplevel,redefined-outer-name
+
+        await admin_module.init()
+    await seed_web_users()
     await acme.start_cronjobs()
     yield
     await db.disconnect()
@@ -47,6 +90,7 @@ app.add_middleware(
 )
 
 if settings.web.enabled:
+    app.add_middleware(auth.middleware.SessionMiddleware)
 
     @app.get('/endpoints', tags=['web'])
     async def swagger_ui_html():
@@ -64,26 +108,27 @@ if settings.web.enabled:
 @app.exception_handler(ACMEException)
 @app.exception_handler(Exception)
 async def acme_exception_handler(request: Request, exc: Exception):
-    # custom exception handler for acme specific response format
     if request.url.path.startswith('/acme/') or isinstance(exc, ACMEException):
-        if isinstance(exc, ACMEException):
-            return await exc.as_response()
-        elif isinstance(exc, ValidationError):
-            return await ACMEException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, exctype='malformed', detail=exc.json()).as_response()
-        elif isinstance(exc, HTTPException):
-            return await ACMEException(status_code=exc.status_code, exctype='serverInternal', detail=str(exc.detail)).as_response()
-        else:
-            return await ACMEException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, exctype='serverInternal', detail=str(exc)).as_response()
-    else:
-        if isinstance(exc, HTTPException):
-            return await http_exception_handler(request, exc)
-        else:
-            return JSONResponse({'detail': str(exc)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return await _handle_acme_exception(request, exc)
+    if isinstance(exc, HTTPException):
+        return await http_exception_handler(request, exc)
+    if isinstance(exc, (RequestValidationError, ValidationError)):
+        return await http_exception_handler(
+            request,
+            HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=jsonable_encoder(exc.errors())),
+        )
+    return JSONResponse({'detail': str(exc)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 app.include_router(acme.router)
 app.include_router(acme.directory_router.api)  # serve acme directory under /acme/directory and /directory
 app.include_router(ca.router)
+app.include_router(auth.router)
+
+if settings.admin.api_key:
+    import admin as admin_module
+
+    app.include_router(admin_module.router)
 
 if settings.web.enabled:
     app.include_router(web.router)
